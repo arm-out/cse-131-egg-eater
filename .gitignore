@@ -1,0 +1,5 @@
+/target
+/tests/*.[soa]
+/tests/*.run
+config.txt
+/changelog/*

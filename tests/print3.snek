@@ -1,0 +1,11 @@
+(let
+    ((i 1) (acc 1))
+    (block
+        (loop
+            (if (> i 10)
+                (break acc)
+                (block
+                    (print i)
+                    (set! acc (* acc i))
+                    (set! i (+ i 1)))))
+        (if (= acc 120) (+ 10 100) acc)))

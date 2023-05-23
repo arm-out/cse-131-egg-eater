@@ -1,0 +1,5 @@
+(fun (myinc x) (+ x 1))
+(fun (fun2 x) (+ x x))
+(fun (myinc x) (+ x 1))
+
+(myinc 10)

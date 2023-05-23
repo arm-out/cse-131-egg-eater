@@ -1,0 +1,3 @@
+(fun (myinc x) (+ x 1))
+
+(myinc 10)
