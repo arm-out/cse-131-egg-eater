@@ -42,6 +42,7 @@ pub enum Expr {
     Number(i64),
     Boolean(bool),
     Id(String),
+    Tuple(Vec<Expr>),
     Let(Vec<(String, Expr)>, Box<Expr>),
     UnOp(Op1, Box<Expr>),
     BinOp(Op2, Box<Expr>, Box<Expr>),
@@ -51,6 +52,7 @@ pub enum Expr {
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
     Fun(String, Vec<Expr>),
+    // Index(Box<Expr>, Box<Expr>),
 }
 
 // Create a static reference to a HashSet of reserved words
@@ -58,7 +60,7 @@ lazy_static! {
     pub static ref RESERVED_WORDS: HashSet<&'static str> = {
         let data = [
             "add1", "sub1", "isnum", "isbool", "let", "set!", "loop", "break", "block", "if",
-            "print", "+", "-", "*", ">", "<", "=", "<=", ">=",
+            "print", "+", "-", "*", ">", "<", "=", "<=", ">=", "tuple", "index", "fun",
         ];
         let mut set = HashSet::new();
         for &s in &data {
@@ -178,6 +180,7 @@ fn parse_expr(s: &Sexp) -> Expr {
         Sexp::Atom(S(b)) if b == "false" => Expr::Boolean(false),
         Sexp::Atom(S(s)) => parse_id(s),
         Sexp::List(vec) => match &vec[..] {
+            [Sexp::Atom(S(constr)), args @ ..] if constr == "tuple" => parse_tuple(args),
             [Sexp::Atom(S(op)), e] if op == "add1" => parse_unop(Op1::Add1, e),
             [Sexp::Atom(S(op)), e] if op == "sub1" => parse_unop(Op1::Sub1, e),
             [Sexp::Atom(S(op)), e] if op == "isnum" => parse_unop(Op1::IsNum, e),
@@ -303,4 +306,8 @@ fn parse_call(fun_name: &str, args: &[Sexp]) -> Expr {
         fun_name.to_string(),
         args.iter().map(|arg| parse_expr(arg)).collect(),
     )
+}
+
+fn parse_tuple(args: &[Sexp]) -> Expr {
+    Expr::Tuple(args.iter().map(|arg| parse_expr(arg)).collect())
 }

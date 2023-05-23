@@ -3,6 +3,21 @@ mod infra;
 // Your tests go here!
 success_tests! {
     {
+        name: tuple_nested,
+        file: "tuple_nested.snek",
+        expected: "[5, [2, 1, 3], [8, 6, 9]]"
+    },
+    {
+        name: tuple2,
+        file: "tuple2.snek",
+        expected: "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
+    },
+    {
+        name: tuple1,
+        file: "tuple1.snek",
+        expected: "[1, 2]"
+    },
+    {
         name: nested_fun1,
         file: "nested_fun1.snek",
         input: "10",

@@ -25,6 +25,7 @@ pub enum Reg {
     RBX, // temp register
     RSP, // stack pointer
     RDI, // "input" keyword
+    R15, // curr heap location
 }
 use Reg::*;
 
@@ -164,6 +165,7 @@ extern snek_print
 {}
 
 our_code_starts_here:
+    mov r15, rsi
 {}
     ret
 ",
@@ -197,6 +199,9 @@ fn depth(e: &Expr) -> i32 {
         Expr::Block(exprs) => exprs.iter().map(|expr| depth(expr)).max().unwrap_or(0),
         Expr::Fun(_, exprs) => {
             // Stack space for each of the arguments + depth of arg expressions
+            exprs.iter().map(|expr| depth(expr)).max().unwrap_or(0) + exprs.len() as i32
+        }
+        Expr::Tuple(exprs) => {
             exprs.iter().map(|expr| depth(expr)).max().unwrap_or(0) + exprs.len() as i32
         }
     }
@@ -301,6 +306,7 @@ fn compile_to_instrs(e: &Expr, args: &Context) -> Vec<Instr> {
         Expr::Number(n) => vec![Instr::IMov(Val::Reg(RAX), Val::Imm(to_num63(*n)))],
         Expr::Boolean(b) => vec![Instr::IMov(Val::Reg(RAX), Val::Imm(to_bool63(*b)))],
         Expr::Id(name) => compile_id(name, args),
+        Expr::Tuple(exprs) => compile_tuple(exprs, args),
         Expr::UnOp(unop, e) => compile_unop(unop, e, args),
         Expr::BinOp(binop, e1, e2) => compile_binop(binop, e1, e2, args),
         Expr::Let(binds, body) => compile_let(binds, body, args),
@@ -694,6 +700,77 @@ fn compile_fun(name: &str, args: &Vec<Expr>, ctx: &Context) -> Vec<Instr> {
     .concat()
 }
 
+// Compile intructions for tuple allocation
+fn compile_tuple(args: &Vec<Expr>, ctx: &Context) -> Vec<Instr> {
+    let mut curr_si = ctx.si;
+    let size = args.len() as i32;
+
+    let mut instrs = args
+        .iter()
+        // args: Expr -> (offset: i32, instrs: Vec<Instr>)
+        .map(|expr| {
+            let curr_instrs = compile_to_instrs(
+                expr,
+                &Context {
+                    si: curr_si,
+                    env: &ctx.env.clone(),
+                    break_target: ctx.break_target.clone(),
+                    ..*ctx
+                },
+            );
+            let curr_offset = curr_si * WORD_SIZE;
+            curr_si += 1;
+            (curr_offset, curr_instrs)
+        })
+        // (offset: i32, instrs: Vec<Instr>) -> Vec<Instr>
+        // Combine instrs for expr with instruction to store result in designated
+        // heap location
+        .map(|(offset, instrs)| {
+            [
+                &instrs[..],
+                &[Instr::IMov(Val::RegOffset(RSP, offset), Val::Reg(RAX))],
+            ]
+            .concat()
+        })
+        // turn iterator of Vec<Instr> into one long vector, essentially concatenating
+        // all of the separate Vec<Instr> we made from the previous map
+        .fold(Vec::new(), |accum, instrs: Vec<Instr>| {
+            [&accum[..], &instrs].concat()
+        });
+
+    let mut heap_offset = size;
+    // move stack values onto heap
+    for i in (ctx.si..curr_si).rev() {
+        // Move value to RAX
+        instrs.push(Instr::IMov(
+            Val::Reg(RAX),
+            Val::RegOffset(RSP, i * WORD_SIZE),
+        ));
+        // Store in corresponding heap location
+        instrs.push(Instr::IMov(
+            Val::RegOffset(R15, heap_offset * WORD_SIZE),
+            Val::Reg(RAX),
+        ));
+        heap_offset -= 1;
+    }
+
+    // Store size of tuple in first heap location
+    instrs.push(Instr::IMov(Val::Reg(RAX), Val::Imm(to_num63(size as i64))));
+    instrs.push(Instr::IMov(Val::RegOffset(R15, 0), Val::Reg(RAX)));
+
+    // Return R15 to RAX
+    instrs.push(Instr::IMov(Val::Reg(RAX), Val::Reg(R15)));
+    // TAG RAX
+    instrs.push(Instr::IAdd(Val::Reg(RAX), Val::Imm(1)));
+    // Increment R15
+    instrs.push(Instr::IAdd(
+        Val::Reg(R15),
+        Val::Imm(((size + 1) * WORD_SIZE) as i64),
+    ));
+
+    instrs
+}
+
 // Convert abstract assembly instruction into concrete X86_64 String representation
 fn instr_to_str(i: &Instr) -> String {
     match i {
@@ -743,6 +820,7 @@ fn reg_to_str(reg: &Reg) -> String {
         RSP => "rsp".to_string(),
         RDI => "rdi".to_string(),
         RBX => "rbx".to_string(),
+        R15 => "r15".to_string(),
     }
 }
 
