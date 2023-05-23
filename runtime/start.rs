@@ -33,8 +33,8 @@ fn get_err_msg(code: i64) -> String {
 
 fn parse_input(input: &str) -> i64 {
     match input {
-        "true" => 3,
-        "false" => 1,
+        "true" => 7,
+        "false" => 3,
         _ => ((input.parse::<i64>().unwrap_or_else(|_| panic!("Invalid"))) << 1)
             .try_into()
             .unwrap(),
@@ -43,9 +43,11 @@ fn parse_input(input: &str) -> i64 {
 
 fn bytes63_to_str(val: i64) -> String {
     match val {
-        1 => "false".to_string(),
-        3 => "true".to_string(),
+        1 => "nil".to_string(),
+        3 => "false".to_string(),
+        7 => "true".to_string(),
         n if n % 2 == 0 => (n >> 1).to_string(),
+        // TODO: tuple representation
         n => panic!("Invalid 63 bit representation: {}", n),
     }
 }

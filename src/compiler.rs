@@ -469,9 +469,9 @@ fn compile_unop(unop: &Op1, e: &Expr, args: &Context) -> Vec<Instr> {
             ]
             .concat(),
             Op1::IsBool => vec![
-                // Check if rightmost bit is 1 (bool)
-                Instr::IAnd(Val::Reg(RAX), Val::Imm(1)),
-                Instr::ICmp(Val::Reg(RAX), Val::Imm(1)),
+                // Check if the 2 rightmost bit is 11 (bool)
+                Instr::IAnd(Val::Reg(RAX), Val::Imm(3)),
+                Instr::ICmp(Val::Reg(RAX), Val::Imm(3)),
                 Instr::IMov(Val::Reg(RBX), Val::Imm(to_bool63(true))),
                 Instr::IMov(Val::Reg(RAX), Val::Imm(to_bool63(false))),
                 Instr::ICMove(Val::Reg(RAX), Val::Reg(RBX)),
@@ -753,11 +753,11 @@ fn to_num63(n: i64) -> i64 {
 }
 
 // Converts bool into assembly 63 bit format, where rightmost bit is type bit.
-// Bools have a type bit of 1, so 0b1 is false and 0b11 is true.
+// Bools have a type bit of 1, so 0b11 is false and 0b111 is true.
 fn to_bool63(b: bool) -> i64 {
     match b {
-        true => 3,  // 0b11
-        false => 1, // 0b01
+        true => 7,  // 0b111
+        false => 3, // 0b011
     }
 }
 
