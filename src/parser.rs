@@ -43,6 +43,7 @@ pub enum Expr {
     Boolean(bool),
     Id(String),
     Tuple(Vec<Expr>),
+    Nil(i64),
     Let(Vec<(String, Expr)>, Box<Expr>),
     UnOp(Op1, Box<Expr>),
     BinOp(Op2, Box<Expr>, Box<Expr>),
@@ -52,7 +53,7 @@ pub enum Expr {
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
     Fun(String, Vec<Expr>),
-    // Index(Box<Expr>, Box<Expr>),
+    Index(Box<Expr>, Box<Expr>),
 }
 
 // Create a static reference to a HashSet of reserved words
@@ -60,7 +61,7 @@ lazy_static! {
     pub static ref RESERVED_WORDS: HashSet<&'static str> = {
         let data = [
             "add1", "sub1", "isnum", "isbool", "let", "set!", "loop", "break", "block", "if",
-            "print", "+", "-", "*", ">", "<", "=", "<=", ">=", "tuple", "index", "fun",
+            "print", "+", "-", "*", ">", "<", "=", "<=", ">=", "tuple", "index", "fun", "nil",
         ];
         let mut set = HashSet::new();
         for &s in &data {
@@ -178,6 +179,7 @@ fn parse_expr(s: &Sexp) -> Expr {
         Sexp::Atom(I(n)) => parse_num(n),
         Sexp::Atom(S(b)) if b == "true" => Expr::Boolean(true),
         Sexp::Atom(S(b)) if b == "false" => Expr::Boolean(false),
+        Sexp::Atom(S(n)) if n == "nil" => Expr::Nil(0),
         Sexp::Atom(S(s)) => parse_id(s),
         Sexp::List(vec) => match &vec[..] {
             [Sexp::Atom(S(constr)), args @ ..] if constr == "tuple" => parse_tuple(args),
@@ -203,6 +205,7 @@ fn parse_expr(s: &Sexp) -> Expr {
             [Sexp::Atom(S(fun_name)), args @ ..] if is_valid_call(fun_name) => {
                 parse_call(fun_name, args)
             }
+            [Sexp::Atom(S(op)), e1, e2] if op == "index" => parse_index(e1, e2),
             _ => panic!("Invalid"),
         },
         _ => panic!("Invalid"),
@@ -310,4 +313,8 @@ fn parse_call(fun_name: &str, args: &[Sexp]) -> Expr {
 
 fn parse_tuple(args: &[Sexp]) -> Expr {
     Expr::Tuple(args.iter().map(|arg| parse_expr(arg)).collect())
+}
+
+fn parse_index(e1: &Sexp, e2: &Sexp) -> Expr {
+    Expr::Index(Box::new(parse_expr(e1)), Box::new(parse_expr(e2)))
 }

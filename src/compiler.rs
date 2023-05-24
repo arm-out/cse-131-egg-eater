@@ -17,6 +17,7 @@ pub enum Val {
     Reg(Reg),
     Imm(i64),
     RegOffset(Reg, i32),
+    RegOffsetReg(Reg, Reg),
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,8 @@ pub enum Instr {
     IJmp(String),
     IJmpEq(String),
     IJmpNotEq(String),
+    IJmpLess(String),
+    IJmpGreaterEq(String),
     IJmpOverflow(String),
     ILabel(String),
 
@@ -89,6 +92,32 @@ impl Instr {
             Instr::IJmpEq(ERROR_LABEL.to_string()),
         ]
     }
+
+    // Throws a dynamic error if the value is not an address
+    // fn test_tuple(reg: Val) -> Vec<Instr> {
+    //     vec![
+    //         Instr::IMov(Val::Reg(RBX), reg),
+    //         Instr::IAnd(Val::Reg(RBX), Val::Imm(3)),
+    //         Instr::ICmp(Val::Reg(RBX), Val::Imm(1)),
+    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::INVALID_ARGUMENT)),
+    //         Instr::IJmpNotEq(ERROR_LABEL.to_string()),
+    //     ]
+    // }
+
+    // Throws a dynamic error if the index is out of range
+    // fn test_bounds(size: Val, idx: Val) -> Vec<Instr> {
+    //     vec![
+    //         // Index >= Size
+    //         Instr::ICmp(size, idx.clone()),
+    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
+    //         Instr::IJmpGreaterEq(ERROR_LABEL.to_string()),
+    //         // Index < 0
+    //         Instr::IMov(Val::Reg(RBX), Val::Imm(0)),
+    //         Instr::ICmp(Val::Reg(RBX), idx),
+    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
+    //         Instr::IJmpLess(ERROR_LABEL.to_string()),
+    //     ]
+    // }
 
     // - Throws a dynamic error if both reg values are not numbers
     fn test_both_nums(reg1: Val, reg2: Val) -> Vec<Instr> {
@@ -176,7 +205,7 @@ our_code_starts_here:
 // Recursively get depth to store temproary variables and let bindings
 fn depth(e: &Expr) -> i32 {
     match e {
-        Expr::Number(_) | Expr::Boolean(_) | Expr::Id(_) => 0,
+        Expr::Number(_) | Expr::Boolean(_) | Expr::Id(_) | Expr::Nil(_) => 0,
         Expr::Let(bindings, body) => {
             let biggest_binding = bindings
                 .iter()
@@ -204,6 +233,7 @@ fn depth(e: &Expr) -> i32 {
         Expr::Tuple(exprs) => {
             exprs.iter().map(|expr| depth(expr)).max().unwrap_or(0) + exprs.len() as i32
         }
+        Expr::Index(struc, idx) => depth(struc).max(depth(idx) + 1),
     }
 }
 
@@ -305,6 +335,7 @@ fn compile_to_instrs(e: &Expr, args: &Context) -> Vec<Instr> {
     match e {
         Expr::Number(n) => vec![Instr::IMov(Val::Reg(RAX), Val::Imm(to_num63(*n)))],
         Expr::Boolean(b) => vec![Instr::IMov(Val::Reg(RAX), Val::Imm(to_bool63(*b)))],
+        Expr::Nil(_) => vec![Instr::IMov(Val::Reg(RAX), Val::Imm(1))],
         Expr::Id(name) => compile_id(name, args),
         Expr::Tuple(exprs) => compile_tuple(exprs, args),
         Expr::UnOp(unop, e) => compile_unop(unop, e, args),
@@ -316,6 +347,7 @@ fn compile_to_instrs(e: &Expr, args: &Context) -> Vec<Instr> {
         Expr::Set(name, e) => compile_set(name, e, args),
         Expr::Block(exps) => compile_block(exps, args),
         Expr::Fun(name, fun_args) => compile_fun(name, fun_args, args),
+        Expr::Index(e1, e2) => compile_index(e1, e2, args),
     }
 }
 
@@ -771,6 +803,39 @@ fn compile_tuple(args: &Vec<Expr>, ctx: &Context) -> Vec<Instr> {
     instrs
 }
 
+fn compile_index(struc: &Expr, index: &Expr, ctx: &Context) -> Vec<Instr> {
+    [
+        // Compute heap structure and store in RAX
+        compile_to_instrs(struc, ctx),
+        // Move RAX to [RSP - stack_offset]
+        vec![Instr::IMov(Val::RegOffset(RSP, ctx.si), Val::Reg(RAX))],
+        // Compute index and store in RAX, making sure to increase stack index
+        compile_to_instrs(
+            index,
+            &Context {
+                si: ctx.si + 1,
+                break_target: ctx.break_target.clone(),
+                ..*ctx
+            },
+        ),
+        // TODO: Test index out of bounds
+        // Instr::test_bounds(Val::RegOffset(RSP, ctx.si), Val::Reg(RAX)),
+        // Index Offset = (1 + index) * 8
+        vec![
+            Instr::IArithShiftRight(1, Val::Reg(RAX)),
+            Instr::IAdd(Val::Reg(RAX), Val::Imm(1)),
+            Instr::IMul(Val::Reg(RAX), Val::Imm(WORD_SIZE as i64)),
+        ],
+        // Move heap location to RAX
+        vec![
+            Instr::IMov(Val::Reg(RBX), Val::RegOffset(RSP, ctx.si)),
+            Instr::ISub(Val::Reg(RBX), Val::Imm(1)),
+            Instr::IMov(Val::Reg(RAX), Val::RegOffsetReg(RBX, RAX)),
+        ],
+    ]
+    .concat()
+}
+
 // Convert abstract assembly instruction into concrete X86_64 String representation
 fn instr_to_str(i: &Instr) -> String {
     match i {
@@ -782,6 +847,8 @@ fn instr_to_str(i: &Instr) -> String {
         Instr::IJmp(label) => format!("jmp {label}"),
         Instr::IJmpEq(label) => format!("je {label}"),
         Instr::IJmpNotEq(label) => format!("jne {label}"),
+        Instr::IJmpLess(label) => format!("jl {label}"),
+        Instr::IJmpGreaterEq(label) => format!("jge {label}"),
         Instr::IAnd(dest, src) => format!("and {}, {}", val_to_str(dest), val_to_str(src)),
         Instr::ILabel(label) => format!("{label}:"),
         Instr::ICMove(dest, src) => format!("cmove {}, {}", val_to_str(dest), val_to_str(src)),
@@ -809,6 +876,7 @@ fn val_to_str(v: &Val) -> String {
     match v {
         Val::Reg(reg) => reg_to_str(reg),
         Val::RegOffset(reg, n) => format!("[{} + {n}]", reg_to_str(reg)),
+        Val::RegOffsetReg(r1, r2) => format!("[{} + {}]", reg_to_str(r1), reg_to_str(r2)),
         Val::Imm(n) => n.to_string(),
     }
 }
