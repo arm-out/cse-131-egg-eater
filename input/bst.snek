@@ -1,0 +1,58 @@
+(fun (bst x)
+    (tuple x (tuple nil) (tuple nil))
+)
+
+(fun (bst_add tree n)
+    (if (= (index tree 0) nil)
+        (bst n)
+
+        (block
+            (if (< n (index tree 0))
+                (tuple (index tree 0) (bst_add (index tree 1) n) (index tree 2))
+                (tuple (index tree 0) (index tree 1) (bst_add (index tree 2) n))
+            )
+        )
+    )
+)
+
+(fun (contains tree n)
+    (if (= (index tree 0) nil)
+        false
+
+        (if (= (index tree 0) n)
+            true
+
+            (block
+                (if (< n (index tree 0))
+                    (contains (index tree 1) n)
+                    (contains (index tree 2) n) 
+                )
+            )
+        )
+    )
+)
+
+(block
+    (print (bst 10))
+    (let (
+        (t (bst 10))
+    ) 
+
+        (block
+            (print (set! t (bst_add t 5)))
+            (print (set! t (bst_add t 20)))
+            (print (set! t (bst_add t 15)))
+            (print (set! t (bst_add t 7)))
+            (print (set! t (bst_add t 3)))
+            (print (set! t (bst_add t 30)))
+
+            (print (contains t 5))
+            (print (contains t 12))
+            (print (contains t 13))
+            (print (contains t 15))
+            (print (contains t 20))
+            (print (contains t 3))
+            (print (contains t 0))
+        )
+    )
+)

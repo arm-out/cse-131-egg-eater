@@ -1,0 +1,7 @@
+(block
+    (print (tuple 1 2 3 4 5))
+    (print (tuple (tuple 1 2 3) 4 5 6 (tuple 7 8) 9))
+    (let ((x (tuple 10 20 30 40 50))) 
+        (index x 1)
+    )
+)

@@ -1,0 +1,19 @@
+(fun (create_pt x y)
+    (tuple x y)
+)
+
+(fun (add_pt x y)
+    (tuple (+ (index x 0) (index y 0)) (+ (index x 1) (index y 1)))
+)
+
+(let (
+    (p1 (create_pt true 5))
+    (p2 (create_pt 7 9))
+    ) 
+
+    (block
+        (print p1)
+        (print p2)
+        (add_pt p1 p2)
+    )
+)

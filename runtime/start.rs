@@ -27,6 +27,7 @@ fn get_err_msg(code: i64) -> String {
     match code {
         7 => format!("invalid argument"),
         8 => format!("overflow"),
+        9 => format!("out of bounds"),
         _ => format!("Error {code}: (Unknown Error Code?!)"),
     }
 }

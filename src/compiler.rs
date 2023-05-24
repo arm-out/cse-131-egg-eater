@@ -24,6 +24,7 @@ pub enum Val {
 pub enum Reg {
     RAX, // return value
     RBX, // temp register
+    RCX, // temp register
     RSP, // stack pointer
     RDI, // "input" keyword
     R15, // curr heap location
@@ -72,15 +73,15 @@ pub enum Instr {
 impl Instr {
     // Throws a dynamic error if the values stored in reg1 and reg2 are not
     // either both bools or both numbers
-    fn test_same_type(reg1: Val, reg2: Val) -> Vec<Instr> {
-        vec![
-            Instr::IMov(Val::Reg(RBX), reg1),
-            Instr::IXor(Val::Reg(RBX), reg2),
-            Instr::ITest(Val::Reg(RBX), Val::Imm(1)),
-            Instr::IMov(Val::Reg(RBX), Val::Imm(error::INVALID_ARGUMENT)),
-            Instr::IJmpNotEq(ERROR_LABEL.to_string()),
-        ]
-    }
+    // fn test_same_type(reg1: Val, reg2: Val) -> Vec<Instr> {
+    //     vec![
+    //         Instr::IMov(Val::Reg(RBX), reg1),
+    //         Instr::IXor(Val::Reg(RBX), reg2),
+    //         Instr::ITest(Val::Reg(RBX), Val::Imm(1)),
+    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::INVALID_ARGUMENT)),
+    //         Instr::IJmpNotEq(ERROR_LABEL.to_string()),
+    //     ]
+    // }
 
     // Throws a dynamic error if the value stored in reg is not a number
     fn test_num(reg: Val) -> Vec<Instr> {
@@ -94,30 +95,30 @@ impl Instr {
     }
 
     // Throws a dynamic error if the value is not an address
-    // fn test_tuple(reg: Val) -> Vec<Instr> {
-    //     vec![
-    //         Instr::IMov(Val::Reg(RBX), reg),
-    //         Instr::IAnd(Val::Reg(RBX), Val::Imm(3)),
-    //         Instr::ICmp(Val::Reg(RBX), Val::Imm(1)),
-    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::INVALID_ARGUMENT)),
-    //         Instr::IJmpNotEq(ERROR_LABEL.to_string()),
-    //     ]
-    // }
+    fn test_tuple(reg: Val) -> Vec<Instr> {
+        vec![
+            Instr::IMov(Val::Reg(RBX), reg),
+            Instr::IAnd(Val::Reg(RBX), Val::Imm(3)),
+            Instr::ICmp(Val::Reg(RBX), Val::Imm(1)),
+            Instr::IMov(Val::Reg(RBX), Val::Imm(error::INVALID_ARGUMENT)),
+            Instr::IJmpNotEq(ERROR_LABEL.to_string()),
+        ]
+    }
 
     // Throws a dynamic error if the index is out of range
-    // fn test_bounds(size: Val, idx: Val) -> Vec<Instr> {
-    //     vec![
-    //         // Index >= Size
-    //         Instr::ICmp(size, idx.clone()),
-    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
-    //         Instr::IJmpGreaterEq(ERROR_LABEL.to_string()),
-    //         // Index < 0
-    //         Instr::IMov(Val::Reg(RBX), Val::Imm(0)),
-    //         Instr::ICmp(Val::Reg(RBX), idx),
-    //         Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
-    //         Instr::IJmpLess(ERROR_LABEL.to_string()),
-    //     ]
-    // }
+    fn test_bounds(_: Val, idx: Val) -> Vec<Instr> {
+        vec![
+            // Index >= Size
+            Instr::ICmp(idx.clone(), Val::RegOffset(RCX, 0)),
+            Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
+            Instr::IJmpGreaterEq(ERROR_LABEL.to_string()),
+            // Index < 0
+            Instr::IMov(Val::Reg(RBX), Val::Imm(0)),
+            Instr::ICmp(idx, Val::Reg(RBX)),
+            Instr::IMov(Val::Reg(RBX), Val::Imm(error::OUT_OF_BOUNDS)),
+            Instr::IJmpLess(ERROR_LABEL.to_string()),
+        ]
+    }
 
     // - Throws a dynamic error if both reg values are not numbers
     fn test_both_nums(reg1: Val, reg2: Val) -> Vec<Instr> {
@@ -473,7 +474,7 @@ fn compile_binop(binop: &Op2, e1: &Expr, e2: &Expr, args: &Context) -> Vec<Instr
             ]
             .concat(),
             Op2::Equal => [
-                Instr::test_same_type(Val::Reg(RAX), offset_reg()),
+                // Instr::test_same_type(Val::Reg(RAX), offset_reg()),
                 Instr::eval_comparison(&Op2::Equal, offset_reg(), Val::Reg(RAX)),
             ]
             .concat(),
@@ -734,6 +735,10 @@ fn compile_fun(name: &str, args: &Vec<Expr>, ctx: &Context) -> Vec<Instr> {
 
 // Compile intructions for tuple allocation
 fn compile_tuple(args: &Vec<Expr>, ctx: &Context) -> Vec<Instr> {
+    if args.len() == 0 {
+        panic!("Invalid: Cannot create empty tuple");
+    }
+
     let mut curr_si = ctx.si;
     let size = args.len() as i32;
 
@@ -808,7 +813,10 @@ fn compile_index(struc: &Expr, index: &Expr, ctx: &Context) -> Vec<Instr> {
         // Compute heap structure and store in RAX
         compile_to_instrs(struc, ctx),
         // Move RAX to [RSP - stack_offset]
-        vec![Instr::IMov(Val::RegOffset(RSP, ctx.si), Val::Reg(RAX))],
+        vec![Instr::IMov(
+            Val::RegOffset(RSP, ctx.si * WORD_SIZE),
+            Val::Reg(RAX),
+        )],
         // Compute index and store in RAX, making sure to increase stack index
         compile_to_instrs(
             index,
@@ -818,8 +826,14 @@ fn compile_index(struc: &Expr, index: &Expr, ctx: &Context) -> Vec<Instr> {
                 ..*ctx
             },
         ),
+        // Test if e1 is a tuple
+        Instr::test_tuple(Val::RegOffset(RSP, ctx.si * WORD_SIZE)),
         // TODO: Test index out of bounds
-        // Instr::test_bounds(Val::RegOffset(RSP, ctx.si), Val::Reg(RAX)),
+        vec![Instr::IMov(
+            Val::Reg(RCX),
+            Val::RegOffset(RSP, ctx.si * WORD_SIZE),
+        )],
+        Instr::test_bounds(Val::Reg(RCX), Val::Reg(RAX)),
         // Index Offset = (1 + index) * 8
         vec![
             Instr::IArithShiftRight(1, Val::Reg(RAX)),
@@ -828,7 +842,7 @@ fn compile_index(struc: &Expr, index: &Expr, ctx: &Context) -> Vec<Instr> {
         ],
         // Move heap location to RAX
         vec![
-            Instr::IMov(Val::Reg(RBX), Val::RegOffset(RSP, ctx.si)),
+            Instr::IMov(Val::Reg(RBX), Val::RegOffset(RSP, ctx.si * WORD_SIZE)),
             Instr::ISub(Val::Reg(RBX), Val::Imm(1)),
             Instr::IMov(Val::Reg(RAX), Val::RegOffsetReg(RBX, RAX)),
         ],
@@ -885,9 +899,10 @@ fn val_to_str(v: &Val) -> String {
 fn reg_to_str(reg: &Reg) -> String {
     match reg {
         RAX => "rax".to_string(),
+        RBX => "rbx".to_string(),
+        RCX => "rcx".to_string(),
         RSP => "rsp".to_string(),
         RDI => "rdi".to_string(),
-        RBX => "rbx".to_string(),
         R15 => "r15".to_string(),
     }
 }

@@ -16,6 +16,14 @@ tests/%.run: tests/%.s runtime/start.rs
 	ar rcs tests/lib$*.a tests/$*.o
 	rustc $(TARGET) -L tests/ -lour_code:$* runtime/start.rs -o tests/$*.run
 
+input/%.s: input/%.snek src/main.rs src/compiler.rs src/parser.rs src/error.rs
+	cargo run $(TARGET) -- $< input/$*.s
+
+input/%.run: input/%.s runtime/start.rs
+	nasm -f $(ARCH) input/$*.s -o input/$*.o
+	ar rcs input/lib$*.a input/$*.o
+	rustc $(TARGET) -L input/ -lour_code:$* runtime/start.rs -o input/$*.run
+
 .PHONY: test
 test:
 	cargo build
@@ -24,4 +32,4 @@ test:
 clean:
 	rm -f tests/*.a tests/*.s tests/*.run tests/*.o
 
-.PRECIOUS: tests/%.s
+.PRECIOUS: tests/%.s input/%.s
